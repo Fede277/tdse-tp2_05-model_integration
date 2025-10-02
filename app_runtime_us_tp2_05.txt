@@ -1,0 +1,33 @@
+TP2-05 — Análisis de g_app_runtime_us (N actuadores)
+
+Qué es
+g_app_runtime_us es el tiempo total que tarda “la app” en cada iteración. Arranca en 0 al comienzo del ciclo y va sumando lo que consumen las tareas (Sensor → System → Actuator). Al final del ciclo queda ese acumulado; en el siguiente vuelve a 0. En TP2-05 la tarea Actuator recorre 3 sub-FSM (LED_A/B/C), de modo que su costo en el ciclo depende de cuántos actuadores estén activos y qué transición hagan.
+
+Escenario probado
+- LED_A = ON fijo
+- LED_B = BLINK (tick_blink ≈ 500 ms)
+- LED_C = PULSE (tick_pulse ≈ 250 ms)
+- Pines: PA5 (LD2), PA8 (LED_B), PA9 (LED_C). Salidas “active high”.
+
+Lo que observé en Live Expressions
+- En reposo (IDLE, sin eventos): g_app_runtime_us ≈ 22–24 µs (típico 23 µs).
+- Al pasar a ACTIVE_01 (A=ON, B=BLINK, C=PULSE):
+  • Ciclos “tranquilos” (sin toggle/pulse en ese ciclo): ≈ 25–28 µs (típico 26 µs).
+  • Cuando B hace toggle (fin de tick_blink): ≈ 31–34 µs (típico 32 µs).
+  • Cuando C finaliza el pulso (pasa a OFF): ≈ 29–32 µs (típico 30 µs).
+  • Coincidencia de eventos (p. ej., toggle de B y fin de pulso de C en el mismo ciclo): pico ≈ 38–42 µs (típico 40 µs).
+
+Qué cosas lo hacen subir
+- Cambios de estado con acciones en el Actuator (HAL_GPIO_WritePin/Toggle) y recarga de tick.
+- Varios actuadores activos en simultáneo (BLINK + PULSE) dentro del mismo ciclo.
+- Logs por UART (LOGGER) si se activaran dentro de las tareas.
+- Breakpoints/pausas del debugger distorsionan la medición.
+
+Relación con WCET
+- g_app_runtime_us mide “lo que costó este ciclo” para toda la app.
+- El WCET es un máximo histórico por tarea; crecerá si en un ciclo una tarea hace más trabajo que su récord anterior (por ejemplo, coincidencia de toggles/pulsos).
+
+Conclusión
+Con A=ON, B=BLINK y C=PULSE, el runtime total se mantiene del mismo orden que en TP2-04 (≈ 23 µs en reposo). Se observan picos moderados cuando B hace toggle (≈ 32 µs) y cuando C termina el pulso (≈ 30 µs). El peor caso típico, cuando coinciden eventos de B y C, rondó ≈ 40 µs. En general, el comportamiento es estable y acorde a tener múltiples actuadores activos sin logging.
+
+
