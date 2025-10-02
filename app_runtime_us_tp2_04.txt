@@ -1,0 +1,22 @@
+TP2-04 — Análisis de g_app_runtime_us
+
+Qué es
+g_app_runtime_us es el tiempo total que tarda “la app” en cada iteración. Arranca en 0 al comienzo del ciclo y va sumando lo que consumen las tareas (Sensor → System → Actuator). Al final del ciclo queda ese acumulado; en el siguiente vuelve a 0.
+
+Lo que observé (con Actuator en BLINK)
+- En reposo (sin eventos) vi valores parecidos a los de antes, típicamente ~20 µs.
+- Al apretar el botón para entrar en BLINK, el runtime se mueve un poco pero sigue en el mismo orden. El costo extra viene cuando el Actuator hace el toggle (GPIO) y cuando System despacha eventos.
+- Cada ciclo vuelve a 0 y se repite, así que el número “baila” según si justo hubo un cambio de estado o no.
+
+Qué cosas lo hacen subir
+- Cambios de estado con acciones (por ejemplo, cuando el Actuator escribe el GPIO al pasar de BLINK_ON a BLINK_OFF o viceversa).
+- Logs por UART (LOGGER): si activo prints dentro de las tareas, el tiempo sube bastante.
+- Breakpoints/pausas del debugger distorsionan la medición.
+
+Relación con WCET
+- g_app_runtime_us es “lo que costó este ciclo”.
+- El WCET es un máximo histórico por tarea; solo sube si aparece un ciclo peor para esa tarea.
+
+Conclusión
+Con el Actuator en BLINK, el runtime total sigue rondando ~20 µs en mi proyecto. Se notan pequeños picos cuando hay toggles del LED o cuando System/Actuator manejan eventos, pero nada fuera de escala. En general se mantiene estable salvo que active logs o fuerce muchos eventos seguidos.
+

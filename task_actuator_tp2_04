@@ -1,0 +1,70 @@
+task_actuator.txt — (TP2-04)
+
+Qué hace este módulo
+--------------------
+Es la parte del “Actuator Statechart” que maneja el LED de la placa (LED_A = LD2 verde, PA5).
+Permite: apagar (OFF), encender (ON), parpadear (BLINK) y hacer un pulso corto (PULSE).
+Todo es no bloqueante: usa un contador de ticks que se va decrementando.
+
+Archivos que miré
+-----------------
+- app/src/task_actuator.c → está la MEF, la init y el update-by-time.
+- app/inc/task_actuator_attribute.h → enums de eventos/estados/ID y struct de cfg/datos. Trae la tabla de transición comentada.
+- app/inc/task_actuator_interface.h → función para recibir órdenes desde otras tareas: put_event_task_actuator(ev, id).
+- app/task_actuator.png → el diagrama con los estados y transiciones.
+
+Tipos y estructuras (lo importante)
+-----------------------------------
+- Eventos (`task_actuator_ev_t`):  
+  EV_LED_XX_OFF, EV_LED_XX_ON, EV_LED_XX_NOT_BLINK, EV_LED_XX_BLINK, EV_LED_XX_PULSE.
+- Estados (`task_actuator_st_t`):  
+  ST_LED_XX_OFF, ST_LED_XX_ON, ST_LED_XX_BLINK_ON, ST_LED_XX_BLINK_OFF, ST_LED_XX_PULSE.
+- ID del actuador (`task_actuator_id_t`): solo ID_LED_A.
+- Config de cada actuador (`task_actuator_cfg_t`):  
+  { id, gpio_port, pin, led_on, led_off, tick_blink, tick_pulse }.
+- Datos en tiempo de ejecución (`task_actuator_dta_t`):  
+  { tick, state, event, flag }.
+
+Constantes que usa
+------------------
+- DEL_LED_XX_BLI = 500  (base para BLINK)  
+- DEL_LED_XX_PUL = 250  (duración del pulso)  
+- DEL_LED_XX_MIN = 0
+
+Tablas (una sola entrada porque hay un LED)
+-------------------------------------------
+- CFG: `{ ID_LED_A, LED_A_PORT, LED_A_PIN, LED_A_ON, LED_A_OFF, DEL_LED_XX_BLI, DEL_LED_XX_PUL }`
+- DTA: `{ tick=0, state=ST_LED_XX_OFF, event=EV_LED_XX_NOT_BLINK, flag=false }`
+
+Funciones clave
+---------------
+1) task_actuator_init()
+   - Pone contadores en cero y deja el LED en OFF por GPIO.
+   - DTA arranca en OFF, sin evento.
+
+2) task_actuator_update()
+   - Usa g_task_actuator_tick_cnt para saber si “toca” ejecutar la MEF (update-by-time).
+   - Si hay ticks pendientes, corre la MEF en un while, sin bloquear.
+
+3) task_actuator_statechart()
+   - switch(state) sobre un único actuador.
+   - Ya implementado:
+     - OFF: si llega EV_LED_XX_ON → escribe nivel de encendido y pasa a ON.
+     - ON : si llega EV_LED_XX_OFF → escribe nivel de apagado y pasa a OFF.
+   - Falta completar (según el PNG/tabla):
+     - BLINK_ON / BLINK_OFF:
+       - En entry: escribir el nivel (ON u OFF).
+       - Si EV_LED_XX_OFF → ir a OFF; si EV_LED_XX_ON → ir a ON.
+       - Si tick > 0 → tick--; si tick == 0 → saltar al otro estado de blink y recargar tick = tick_blink.
+       - Con EV_LED_XX_NOT_BLINK se sale del modo parpadeo (normalmente a OFF u ON).
+     - PULSE:
+       - En entry: encender LED, tick = tick_pulse.
+       - Si tick > 0 → tick--; si tick == 0 → apagar LED y volver a OFF.
+
+Cómo matchea con el PNG
+-----------------------
+El diagrama muestra entry/op_led(led) en cada estado, y que BLINK alterna ON/OFF consumiendo el tick y recargando cuando llega a 0.  
+PULSE es “un disparo”: prende un rato (tick_pulse) y después vuelve a OFF.  
+La tabla en el .h dice lo mismo con los guards `[tick==0]` y `[tick>0]`.
+
+

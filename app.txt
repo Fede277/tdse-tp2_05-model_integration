@@ -1,0 +1,142 @@
+
+Análisis y descripciones (TP2-01-05) – main.c y app.c
+====================================================
+
+Objetivo del firmware
+---------------------
+Inicializa reloj y SysTick, configura periféricos (GPIO, UART), expone una base de tiempo
+(1 ms) para ejecutar lazo no bloqueante de aplicación y registra métricas por tarea:
+tiempo de CPU por ciclo (g_app_runtime_us) y WCET observado (task_dta_list[i].WCET).
+La consola (LOGGER) informa estado/diagnóstico.
+
+---------------------------------
+A) main.c — Flujo de arranque real
+---------------------------------
+Inclusiones: main.h, logger.h, app.h
+
+Secuencia reset → lazo:
+1) initialise_monitor_handles() si LOGGER usa semihosting.
+2) HAL_Init();                    // resetea periféricos e inicializa SysTick (1 ms)
+3) SystemClock_Config();          // HSI/2 * PLL x16 → SYSCLK = 64 MHz
+   - APB1 = HCLK/2, APB2 = HCLK/1, FLASH_LATENCY_2
+4) MX_GPIO_Init();                // B1: entrada EXTI Rising; LD2: salida
+   - Reloj habilitado: GPIOC, GPIOD, GPIOA, GPIOB
+   - EXTI15_10_IRQn habilitada
+5) MX_USART2_UART_Init();         // 115200-8N1, TX/RX
+6) app_init();                    // inicializa aplicación/tareas
+7) while(1) { app_update(); }     // lazo no bloqueante (Update by Time Code)
+
+Agregado:
+• SystemCoreClock queda configurado a 64 MHz después de SystemClock_Config().
+• SysTick queda a 1 ms por defecto (HAL) y disparará HAL_SYSTICK_Callback().
+
+-----------------
+B) app.c — Detalle
+-----------------
+Inclusiones: main.h, logger.h, dwt.h, board.h, task_system.h, task_actuator.h, task_sensor.h
+
+Constantes/macros:
+- G_APP_CNT_INI = 0ul
+- G_APP_TICK_CNT_INI = 0ul
+- TASK_X_WCET_INI = 0ul
+- TASK_X_DELAY_MIN = 0ul
+
+Estructuras:
+typedef struct {
+  void (*task_init)(void *);      // init de tarea
+  void (*task_update)(void *);    // update NO bloqueante
+  void *parameters;
+} task_cfg_t;
+
+typedef struct {
+  uint32_t WCET;                  // peor tiempo observado (µs)
+} task_dta_t;
+
+Tabla de configuración de tareas (orden real):
+const task_cfg_t task_cfg_list[] = {
+  {task_sensor_init,   task_sensor_update,   NULL},
+  {task_system_init,   task_system_update,   NULL},
+  {task_actuator_init, task_actuator_update, NULL}
+};
+#define TASK_QTY (sizeof(task_cfg_list)/sizeof(task_cfg_t))
+
+Textos:
+p_sys = " Bare Metal - Event-Triggered Systems (ETS)"
+p_app = " App - Model Integration - C codig"   // (Sugerencia: corregir “codig” → “coding” o “código”)
+
+Variables globales:
+uint32_t g_app_cnt;               // ciclos de app_update ejecutados
+uint32_t g_app_runtime_us;        // tiempo de CPU del ciclo actual (µs)
+volatile uint32_t g_app_tick_cnt; // ticks pendientes para habilitar un ciclo
+task_dta_t task_dta_list[TASK_QTY];
+
+Inicialización — app_init():
+1) LOGGER_INFO de banner/estado y Tick HAL_GetTick().
+2) g_app_cnt = 0;  cycle_counter_init();     // habilita DWT/counter de tiempo
+3) Para cada tarea (según task_cfg_list):
+   - llama (*task_init)(parameters)
+   - inicializa task_dta_list[i].WCET = 0
+4) Sección crítica (CPSID i / CPSIE i):
+   - g_app_tick_cnt = 0
+   - g_task_sensor_tick_cnt = 0
+   - g_task_system_tick_cnt = 0
+   - g_task_actuator_tick_cnt = 0
+
+Ejecución — app_update() (lazo por “tick”):
+• Sección crítica: si g_app_tick_cnt > 0 → g_app_tick_cnt-- y b_time_update_required = true.
+• while (b_time_update_required):
+  a) g_app_cnt++; g_app_runtime_us = 0;
+  b) Para i = 0..TASK_QTY-1:
+     - cycle_counter_reset();
+     - (*task_update)(parameters);
+     - cycle_counter_time_us = cycle_counter_get_time_us();
+     - g_app_runtime_us += cycle_counter_time_us;
+     - if (task_dta_list[i].WCET < cycle_counter_time_us)
+         task_dta_list[i].WCET = cycle_counter_time_us;
+  c) Sección crítica: si aún quedan ticks pendientes (g_app_tick_cnt > 0),
+     consumir otro (g_app_tick_cnt--) y repetir; si no, salir del while.
+
+Interrupción — HAL_SYSTICK_Callback():
+• Se invoca cada 1 ms. Incrementa:
+  - g_app_tick_cnt
+  - g_task_sensor_tick_cnt
+  - g_task_system_tick_cnt
+  - g_task_actuator_tick_cnt
+
+---------------------------------------------
+C) Evolución de SysTick/SystemCoreClock
+---------------------------------------------
+• Tras HAL_Init(), SysTick queda configurado a 1 ms y HAL registrará HAL_SYSTICK_Callback().
+• SystemClock_Config() fija SystemCoreClock = 64 MHz (PLL a partir de HSI/2).
+• Con SysTick activo, cada 1 ms HAL_SYSTICK_Callback() hace g_app_tick_cnt++,
+  habilitando que app_update() “consuma” el tick (no bloqueante) y ejecute el
+  ciclo de actualización de tareas.
+
+---------------------------------------------
+D) Métricas reales (qué mide cada variable)
+---------------------------------------------
+• g_app_runtime_us:
+  - Se pone a 0 al inicio de cada ciclo válido (cuando se consumió 1 tick).
+  - Suma los tiempos de cada task_update() medidos con DWT (µs).
+  - Refleja el costo total de CPU del ciclo actual del lazo de aplicación.
+
+• WCET por tarea (task_dta_list[i].WCET):
+  - Se inicializa a 0 en app_init().
+  - En cada ciclo, se actualiza si el tiempo medido (cycle_counter_get_time_us())
+    supera el máximo previo (peor caso observado).
+
+---------------------------------------------------------
+E) Impacto de LOGGER_INFO()
+---------------------------------------------------------
+LOGGER_INFO() se usa en app_init() (banner/valores). Si se agregan logs dentro
+de app_update() o dentro de task_update(), el costo de formateo y salida
+(UART/semihosting) incrementará:
+  - g_app_runtime_us del ciclo,
+  - y potencialmente los picos de WCET de las tareas logueadas.
+
+
+
+
+ 
+
+

@@ -1,0 +1,28 @@
+TP2-04 — Análisis del WCET de la tarea Actuator
+
+Qué es
+El WCET (Worst-Case Execution Time) guarda el “peor caso” observado para la tarea Actuator. Es un máximo histórico: si en un ciclo la tarea tarda más que el récord anterior, el WCET se actualiza; si tarda menos, no baja.
+
+Dónde se ve
+El campo WCET está en la tabla global de tareas (task_dta_list[i].WCET). En Live Expressions se puede agregar ese índice para mirar cómo evoluciona mientras corre el programa.
+
+Lo que observé (LED_A en BLINK)
+- Después del reset arranca en 0 µs.
+- Con el LED titilando, el valor sube cuando aparece un ciclo con más trabajo (por ejemplo, justo en el cambio de fase ON↔OFF donde hay un HAL_GPIO_WritePin y recarga de tick).
+- Una vez que marca un valor alto, queda fijo hasta que ocurra algo peor.
+
+Qué lo hace crecer
+- Transiciones con acciones: escribir el GPIO (encender/apagar) es lo que más “se nota”.
+- Recarga de tick y lógica de BLINK/PULSE también suman un poco.
+- Si habilito LOGGER dentro del Actuator, el WCET sube (la UART agrega tiempo).
+- Pausar con el debugger no es representativo; conviene mirar con la app corriendo.
+
+Entre estados
+- En BLINK_ON/BLINK_OFF el “peor caso” suele coincidir con el instante en que tick llega a 0 y se hace el toggle + recarga.
+- En ON u OFF sin eventos, la tarea hace casi nada, así que no cambia el máximo.
+- En PULSE el patrón es similar al de BLINK: el pico aparece al terminar el pulso (apagado del LED y salida del estado).
+
+Conclusiones vistas
+El WCET del Actuator refleja sobre todo los momentos de toggle del LED (GPIO) y la administración del tick. En mis pruebas quedó estable después de un par de ciclos con cambios de fase; solo vuelve a crecer si fuerzo más actividad (muchos eventos seguidos) o si activo logs.
+
+
