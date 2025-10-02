@@ -1,0 +1,31 @@
+TP2-05 — (N actuadores)
+
+Qué es
+El WCET (Worst-Case Execution Time) guarda el “peor caso” observado para la tarea Actuator. Es un máximo histórico: si en un ciclo la tarea tarda más que el récord anterior, el WCET se actualiza; si tarda menos, no baja. En TP2-05 la tarea recorre 3 sub-FSM (LED_A, LED_B, LED_C), por lo que el WCET refleja el peor costo dentro del ciclo completo (la suma del trabajo hecho por cada actuador en ese ciclo).
+
+Dónde se ve
+El campo WCET está en la tabla global de tareas (task_dta_list[i].WCET). En Live Expressions se puede agregar ese índice para mirar cómo evoluciona mientras corre la app. Además, para entender “qué lo dispara”, conviene observar:
+- task_actuator_dta_list[0..2].state y .tick
+- (GPIOA->ODR & GPIO_PIN_8) y (GPIOA->ODR & GPIO_PIN_9) para ver BLINK/PULSE lógicos
+
+Lo que observé (A=ON, B=BLINK, C=PULSE)
+- Después del reset el WCET arranca en ~0 µs y se actualiza al primer ciclo “cargado”.
+- El valor suele crecer cuando:
+  • LED_B hace toggle al vencer su tick_blink (transición BLINK_ON↔BLINK_OFF).
+  • LED_C termina el pulso (salta a OFF).
+- Si en un mismo ciclo coinciden eventos/tiempos de más de un actuador (p. ej., B toggle y C fin de pulso), el WCET puede subir un poco más porque la tarea hace más trabajo total en ese ciclo.
+- En ON u OFF sin eventos, el aporte de ese actuador es mínimo (no empuja el WCET).
+
+Qué lo hace crecer
+- Acciones que escriben el GPIO (HAL_GPIO_WritePin / Toggle) + recarga de tick.
+- Mayor número de sub-FSM “activos” en simultáneo (BLINK/PULSE) dentro del mismo ciclo.
+- Si se habilitara LOGGER dentro de la tarea, el WCET subiría (E/S por UART).
+
+Entre estados (por actuador)
+- BLINK_ON/BLINK_OFF: el pico local aparece cuando tick llega a 0 (toggle + recarga).
+- PULSE: el pico local aparece al finalizar el pulso (apagado + salida a OFF).
+- ON/OFF: prácticamente sin costo si no llegan eventos.
+
+Conclusiones vistas
+En TP2-05 el WCET del Actuator representa el peor trabajo observado al procesar los 3 actuadores en un ciclo. Crece principalmente por los momentos de toggle (GPIO) y manejo de temporizadores de BLINK/PULSE. Con A=ON, B=BLINK y C=PULSE, el WCET se estabiliza tras algunos ciclos con cambios de fase; puede subir si coinciden expiraciones/eventos de varios actuadores en el mismo ciclo o si se inyectan muchos eventos seguidos.
+
