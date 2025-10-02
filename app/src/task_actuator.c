@@ -53,24 +53,30 @@
 #define G_TASK_ACT_CNT_INIT         0ul
 #define G_TASK_ACT_TICK_CNT_INI     0ul
 
+/* Delays por defecto (ms) */
 #define DEL_LED_XX_PUL              250ul
 #define DEL_LED_XX_BLI              500ul
 #define DEL_LED_XX_MIN              0ul
 
 /********************** internal data declaration ****************************/
+/* === Configuración de 3 actuadores (A/B/C) === */
 const task_actuator_cfg_t task_actuator_cfg_list[] = {
-    { ID_LED_A, LED_A_PORT, LED_A_PIN, LED_A_ON, LED_A_OFF,
-      DEL_LED_XX_BLI, DEL_LED_XX_PUL }
+    { ID_LED_A, LED_A_PORT, LED_A_PIN, LED_A_ON, LED_A_OFF, DEL_LED_XX_BLI, DEL_LED_XX_PUL },
+    { ID_LED_B, LED_B_PORT, LED_B_PIN, LED_B_ON, LED_B_OFF, DEL_LED_XX_BLI, DEL_LED_XX_PUL },
+    { ID_LED_C, LED_C_PORT, LED_C_PIN, LED_C_ON, LED_C_OFF, DEL_LED_XX_BLI, DEL_LED_XX_PUL }
 };
 #define ACTUATOR_CFG_QTY (sizeof(task_actuator_cfg_list)/sizeof(task_actuator_cfg_t))
 
+/* === Datos en tiempo de ejecución (3 entradas) === */
 task_actuator_dta_t task_actuator_dta_list[] = {
-    { DEL_LED_XX_MIN, ST_LED_XX_OFF, EV_LED_XX_NOT_BLINK, false }
+    { DEL_LED_XX_MIN, ST_LED_XX_OFF, EV_LED_XX_OFF, false }, // A
+    { DEL_LED_XX_MIN, ST_LED_XX_OFF, EV_LED_XX_OFF, false }, // B
+    { DEL_LED_XX_MIN, ST_LED_XX_OFF, EV_LED_XX_OFF, false }  // C
 };
 #define ACTUATOR_DTA_QTY (sizeof(task_actuator_dta_list)/sizeof(task_actuator_dta_t))
 
 /********************** internal functions declaration ***********************/
-void task_actuator_statechart(void);
+static void task_actuator_statechart(void);
 
 /********************** internal data definition *****************************/
 const char *p_task_actuator  = "Task Actuator (Actuator Statechart)";
@@ -81,6 +87,16 @@ uint32_t g_task_actuator_cnt;
 volatile uint32_t g_task_actuator_tick_cnt;
 
 /********************** external functions definition ************************/
+/* Cola 1-evento por actuador: setea (event, flag) para que el statechart lo consuma */
+void put_event_task_actuator(task_actuator_ev_t event, task_actuator_id_t identifier)
+{
+    if ((uint32_t)identifier < ACTUATOR_DTA_QTY) {
+        task_actuator_dta_t *d = &task_actuator_dta_list[identifier];
+        d->event = event;
+        d->flag  = true;
+    }
+}
+
 void task_actuator_init(void *parameters)
 {
     uint32_t index;
@@ -166,7 +182,7 @@ void task_actuator_update(void *parameters)
     }
 }
 
-void task_actuator_statechart(void)
+static void task_actuator_statechart(void)
 {
     uint32_t index;
     const task_actuator_cfg_t *cfg;

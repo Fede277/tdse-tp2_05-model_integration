@@ -95,6 +95,17 @@ extern "C" {
   #define BTN_D_PORT       GPIOB
   #define BTN_D_PIN        GPIO_PIN_5
   #define BTN_D_PRESSED    GPIO_PIN_RESET
+
+
+  #define LED_B_PORT       GPIOA
+  #define LED_B_PIN        GPIO_PIN_8
+  #define LED_B_ON         GPIO_PIN_SET
+  #define LED_B_OFF        GPIO_PIN_RESET
+
+  #define LED_C_PORT       GPIOA
+  #define LED_C_PIN        GPIO_PIN_9
+  #define LED_C_ON         GPIO_PIN_SET
+  #define LED_C_OFF        GPIO_PIN_RESET
 #endif /* NUCLEO_F103RC */
 
 #endif /* 64-pin boards */
@@ -143,4 +154,5 @@ extern "C" {
 #endif /* BOARD_INC_BOARD_H_ */
 
 /********************** end of file ******************************************/
+
 

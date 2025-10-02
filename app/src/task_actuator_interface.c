@@ -48,6 +48,7 @@
 #include "board.h"
 #include "app.h"
 #include "task_actuator_attribute.h"
+#include "task_actuator_interface.h"
 
 /********************** macros and definitions *******************************/
 
@@ -60,14 +61,11 @@
 /********************** external data declaration ****************************/
 
 /********************** external functions definition ************************/
-void put_event_task_actuator(task_actuator_ev_t event, task_actuator_id_t identifier)
-{
-	task_actuator_dta_t *p_task_actuator_dta;
-
-	p_task_actuator_dta = &task_actuator_dta_list[identifier];
-
-	p_task_actuator_dta->event = event;
-	p_task_actuator_dta->flag = true;
-}
+/* NOTA:
+ * La función put_event_task_actuator() se implementa en task_actuator.c
+ * para evitar múltiples definiciones en el linker. Este archivo se deja
+ * sin implementación de esa función.
+ */
 
 /********************** end of file ******************************************/
+
